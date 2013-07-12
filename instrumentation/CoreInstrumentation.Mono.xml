@@ -1,0 +1,20 @@
+<extension xmlns="urn:newrelic-extension">
+	<instrumentation>
+		<!-- Mono-specific tracer factories -->
+		<tracerFactory name="NewRelic.Additions.LoadModulesTracerFactory">
+			<match assemblyName="System.Web" className="System.Web.Configuration.HttpModulesSection">
+				<exactMethodMatcher methodName="LoadModules" parameters="System.Web.HttpApplication" />
+			</match>
+		</tracerFactory>
+		<tracerFactory name="NewRelic.Additions.RunHooksTracerFactory" level="2" metric="none">
+			<match assemblyName="System.Web" className="System.Web.HttpApplication+&lt;RunHooks&gt;c__Iterator2">
+				<exactMethodMatcher methodName="MoveNext" parameters="void" />
+			</match>
+		</tracerFactory>
+		<tracerFactory name="NewRelic.Agent.Core.Tracer.Factories.Web.HttpApplicationEndTracerFactory">
+			<match assemblyName="System.Web" className="System.Web.HttpApplicationFactory">
+				<exactMethodMatcher methodName="FireOnAppEnd" parameters="void" />
+			</match>
+		</tracerFactory>
+	</instrumentation>
+</extension>
