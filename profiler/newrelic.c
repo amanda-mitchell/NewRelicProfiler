@@ -436,6 +436,8 @@ void writeCompressedInteger(unsigned char **destination, uint32_t value)
 	}
 }
 
+static MonoAssembly *agentCore = NULL;
+
 static void jit_starting(MonoProfiler *profiler, MonoMethod *method)
 {
 	MonoClass *methodClass = mono_method_get_class(method);
@@ -484,6 +486,11 @@ static void jit_starting(MonoProfiler *profiler, MonoMethod *method)
 			MonoImage *additionsImage = mono_assembly_get_image(additionsAssembly);
 			if (additionsImage != NULL)
 			{
+				mono_image_addref(additionsImage);
+				agentCore = mono_assembly_open("NewRelic.Agent.Core.dll", NULL);
+
+				// "leak" the assembly to prevent it from being unloaded.
+				mono_image_addref(mono_assembly_get_image(agentCore));
 
 				MonoClass *agentShim = mono_class_from_name(additionsImage, "NewRelic.Additions", "MonoShim");
 				if (agentShim != NULL)
@@ -532,8 +539,11 @@ static void jit_starting(MonoProfiler *profiler, MonoMethod *method)
 		{
 			imageProfiler->status = Failed;
 
-			imageProfiler->getTracerToken = mono_profiler_inject_methodref(image, profiler->getTracerMethod);
-			imageProfiler->finishTracerToken = mono_profiler_inject_methodref(image, profiler->finishTracerMethod);
+			if (!mono_profiler_inject_methodref(image, profiler->getTracerMethod, &imageProfiler->getTracerToken))
+				break;
+
+			if (!mono_profiler_inject_methodref(image, profiler->finishTracerMethod, &imageProfiler->finishTracerToken))
+				break;
 
 			if (!mono_profiler_inject_typeref(image, mono_get_object_class(), &imageProfiler->objectTypeToken))
 				break;
@@ -659,9 +669,6 @@ static void jit_starting(MonoProfiler *profiler, MonoMethod *method)
 
 	uint32_t signatureToken;
 	BOOL addedSignatureToken = mono_profiler_inject_user_string(image, signatureParameter, &signatureToken);
-
-	free(signatureParameter);
-	signatureParameter = NULL;
 
 	if (!addedSignatureToken)
 		return;
@@ -1565,6 +1572,88 @@ Configuration *parse_configuration()
 	return configuration;
 }
 
+void appdomain_loaded(MonoProfiler *profiler, MonoDomain *domain, int result)
+{
+	pthread_mutex_lock(&profiler->lock);
+
+	if (profiler->status == Loaded)
+	{
+		mono_assembly_open("NewRelic.Additions.dll", NULL);
+		mono_assembly_open("NewRelic.Agent.Core.dll", NULL);
+	}
+
+	pthread_mutex_unlock(&profiler->lock);
+}
+
+void image_unloading(MonoProfiler *profiler, MonoImage *image)
+{
+	pthread_mutex_lock(&profiler->lock);
+	ImageProfiler *unloadingImage = profiler->images;
+	pthread_mutex_unlock(&profiler->lock);
+
+	while (unloadingImage != NULL && unloadingImage->image != image)
+		unloadingImage = unloadingImage->next;
+
+	if (unloadingImage != NULL)
+	{
+		pthread_mutex_lock(&unloadingImage->lock);
+		unloadingImage->status = NotLoaded;
+		unloadingImage->getTracerToken = 0;
+		unloadingImage->finishTracerToken = 0;
+		unloadingImage->assemblyNameToken = 0;
+		unloadingImage->int32TypeToken = 0;
+		unloadingImage->boolTypeToken = 0;
+		unloadingImage->objectTypeToken = 0;
+		unloadingImage->exceptionTypeToken = 0;
+		ClassProfiler *classProfiler = unloadingImage->classes;
+		unloadingImage->classes = NULL;
+		pthread_mutex_unlock(&unloadingImage->lock);
+
+		while (classProfiler != NULL)
+		{
+			ClassProfiler *temp = classProfiler;
+			classProfiler = classProfiler->next;
+			free(temp);
+		}
+	}
+
+	if (strcmp("NewRelic.Additions", mono_image_get_name(image)) == 0)
+	{
+		pthread_mutex_lock(&profiler->lock);
+		profiler->status = NotLoaded;
+		profiler->getTracerMethod = NULL;
+		profiler->finishTracerMethod = NULL;
+		ImageProfiler *imageProfiler = profiler->images;
+		profiler->images = NULL;
+		pthread_mutex_unlock(&profiler->lock);
+
+		while (imageProfiler != NULL)
+		{
+			pthread_mutex_lock(&imageProfiler->lock);
+			imageProfiler->status = Failed;
+			ClassProfiler *class = imageProfiler->classes;
+			pthread_mutex_unlock(&imageProfiler->lock);
+			ImageProfiler *tempImage = imageProfiler;
+			imageProfiler = imageProfiler->next;
+			free(tempImage);
+
+			while (class != NULL)
+			{
+				ClassProfiler *temp = class;
+				class = class->next;
+				free(temp);
+			}
+		}
+	}
+}
+
+MonoAssembly *assemblySearch(MonoAssemblyName *name, void *nothing)
+{
+	if (agentCore != NULL && strcmp("NewRelic.Agent.Core", mono_assembly_name_get_name(name)) == 0)
+		return agentCore;
+	return NULL;
+}
+
 void mono_profiler_startup (const char *desc)
 {
 	MonoProfiler *profiler = malloc(sizeof(MonoProfiler));
@@ -1574,10 +1663,12 @@ void mono_profiler_startup (const char *desc)
 
 	profiler->configuration = parse_configuration();
 
+mono_install_assembly_search_hook(assemblySearch, NULL);
 	mono_profiler_install(profiler, shutdown);
-	mono_profiler_install_module(NULL, image_loaded, NULL, NULL);
+	mono_profiler_install_module(NULL, image_loaded, image_unloading, NULL);
 	mono_profiler_install_class(NULL, class_loaded, NULL, NULL);
 	mono_profiler_install_jit_compile(jit_starting, NULL);
+	mono_profiler_install_appdomain(NULL, appdomain_loaded, NULL, NULL);
 
-	mono_profiler_set_events (MONO_PROFILE_MODULE_EVENTS | MONO_PROFILE_CLASS_EVENTS | MONO_PROFILE_JIT_COMPILATION);
+	mono_profiler_set_events (MONO_PROFILE_APPDOMAIN_EVENTS | MONO_PROFILE_MODULE_EVENTS | MONO_PROFILE_CLASS_EVENTS | MONO_PROFILE_JIT_COMPILATION);
 }
