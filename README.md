@@ -10,3 +10,4 @@ Directions (currently really ghetto because it's a proof of concept):
 6. Copy NewRelic.Agent.Core.dll into this directory.
 7. Run additions/make.sh.
 8. Run profiler/make.sh.
+9. Merge the contents of instrumentation/CoreInstrumentation.Mono.xml into the CoreInstrumentation.xml that came with the NewRelic installer.
