@@ -11,7 +11,6 @@ namespace NewRelic.Additions
 
 		public ITracer GetTracer(Transaction transaction, ClassMethodSignature signature, object target, object[] arguments)
 		{
-			System.Console.Error.WriteLine("tracer!");
 			if (arguments.Length == 0 || _initModulesTracerFactory == null)
 				return null;
 

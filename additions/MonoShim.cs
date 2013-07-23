@@ -41,7 +41,6 @@ namespace NewRelic.Additions
 			foreach (var factory in factories)
 			{
 				string factoryName = factory.GetType().FullName;
-				Console.Error.WriteLine("Registering {0}", factoryName);
 				tracerFactories.Add(factoryName, factory);
 			}
 		}

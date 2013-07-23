@@ -21,13 +21,12 @@ namespace NewRelic.Additions
 
 		public ITracer GetTracer(Transaction transaction, ClassMethodSignature signature, object target, object[] arguments)
 		{
-			Console.Error.WriteLine("other tracer!");
 			if (_executionPipelineStepTracerFactory == null || _delegateField == null || _parentField == null ||
 				!_iteratorType.IsInstanceOfType(target))
 			{
 				return null;
 			}
-			Console.Error.WriteLine("continuing '{0}' '{1}'", transaction, transaction == null ? null : transaction.LastTracer);
+
 			return _executionPipelineStepTracerFactory.GetTracer(transaction, signature, _parentField.GetValue(target),
 				new object[] { new ExecutionStepShim { Handler = _delegateField.GetValue(target) } });
 		}
