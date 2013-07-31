@@ -1039,11 +1039,11 @@ static void jit_starting(MonoProfiler *profiler, MonoMethod *method)
 
 		if (codeStart[patchOffset->offset] == 0x2A)
 		{
-			patchOffset->target = ((codeSize - reversedPatchOffsets->offset - 1) + patchInstructionBytes);
-			patchOffset->size = (reversedPatchOffsets->target < 128) ? 1 : 4;
+			patchOffset->target = ((codeSize - patchOffset->offset - 1) + patchInstructionBytes);
+			patchOffset->size = (patchOffset->target < 128) ? 1 : 4;
 		}
 
-		patchInstructionBytes += reversedPatchOffsets->size;
+		patchInstructionBytes += patchOffset->size;
 		patchOffset = patchOffset->next;
 	}
 
