@@ -847,9 +847,6 @@ static void jit_starting(MonoProfiler *profiler, MonoMethod *method)
 		return;
 	}
 
-	
-
-
 	PatchOffset *reversedPatchOffsets = NULL;
 
 	for (uint32_t codeOffset = 0; codeOffset < codeSize; codeOffset++)
@@ -1663,7 +1660,7 @@ void mono_profiler_startup (const char *desc)
 
 	profiler->configuration = parse_configuration();
 
-mono_install_assembly_search_hook(assemblySearch, NULL);
+	mono_install_assembly_search_hook(assemblySearch, NULL);
 	mono_profiler_install(profiler, shutdown);
 	mono_profiler_install_module(NULL, image_loaded, image_unloading, NULL);
 	mono_profiler_install_class(NULL, class_loaded, NULL, NULL);
